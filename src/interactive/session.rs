@@ -272,8 +272,9 @@ impl InteractiveCli {
         };
         
         println!("{} 啟動實時終端視圖 (按 {} 退出)", 
-                 "🖥️".bright_white(), "'q' 或 Esc".yellow());
-        println!("視圖範圍: {}, 顯示視野: {}\n", view_desc, if show_vision { "是" } else { "否" });
+                 "🖥️".bright_white(), "'q', Esc 或 Ctrl+C".yellow());
+        println!("視圖範圍: {}, 顯示視野: {}", view_desc, if show_vision { "是" } else { "否" });
+        println!("{} 注意：如果退出鍵無效，視圖將在30秒後自動退出\n", "💡".bright_blue());
         
         if let Err(e) = view.init_terminal() {
             println!("{} 初始化終端失敗: {}", "❌".red(), e);
@@ -281,6 +282,9 @@ impl InteractiveCli {
         }
         
         // 實時循環
+        let mut loop_counter = 0u64;
+        let timeout_cycles = 300; // 30秒後自動退出 (300 * 100ms)
+        
         loop {
             // 同步共享遊戲狀態
             if let Some(client) = self.command_handler.game_client.as_mut() {
@@ -289,7 +293,7 @@ impl InteractiveCli {
                 }
                 
                 // 更新技能冷卻時間
-                client.get_game_state_mut().update_cooldowns(0.6); // 600ms = 0.6s
+                client.get_game_state_mut().update_cooldowns(0.1); // 100ms = 0.1s
             }
             
             // 渲染視圖
@@ -301,7 +305,17 @@ impl InteractiveCli {
             
             match render_result {
                 Ok(UserInput::Continue) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                    loop_counter += 1;
+                    // 每10秒顯示一次提示
+                    if loop_counter % 100 == 0 {
+                        eprintln!("按 q, Esc 或 Ctrl+C 退出視圖... ({}/{})", loop_counter / 10, timeout_cycles / 10);
+                    }
+                    // 30秒後自動退出（作為workaround）
+                    if loop_counter >= timeout_cycles {
+                        println!("\n{} 視圖超時，自動退出", "⏰".bright_yellow());
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
                 Ok(UserInput::Quit) => break, // 用戶按了退出鍵
                 Ok(input) => {
@@ -309,7 +323,7 @@ impl InteractiveCli {
                     if let Err(e) = self.command_handler.handle_view_input(input).await {
                         println!("{} 處理輸入失敗: {}", "❌".red(), e);
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
                 Err(e) => {
                     println!("{} 終端視圖錯誤: {}", "❌".red(), e);

@@ -497,6 +497,7 @@ dependencies = [
  "tokio",
  "toml",
  "vek",
+ "winapi",
 ]
 
 [[package]]

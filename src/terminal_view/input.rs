@@ -1,6 +1,13 @@
 /// 輸入處理模塊
 use std::io;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+#[cfg(windows)]
+use winapi::um::winuser::{GetAsyncKeyState, VK_ESCAPE};
 use vek::Vec2;
 use crate::game_state::GameState;
 use super::viewport::ViewportManager;
@@ -32,13 +39,77 @@ pub enum UserInput {
 pub struct InputHandler {
     /// 當前選擇的技能（技能模式）
     pub selected_ability: Option<String>,
+    /// 退出標誌
+    exit_requested: Arc<AtomicBool>,
+    /// 輸入線程句柄
+    input_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl InputHandler {
     /// 創建新的輸入處理器
     pub fn new() -> Self {
+        let exit_flag = Arc::new(AtomicBool::new(false));
+        let exit_flag_clone = exit_flag.clone();
+        
+        // 啟動專用的退出鍵檢測線程
+        let input_thread = thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_millis(50));
+                
+                // 方法1: Windows API 直接檢測按鍵
+                #[cfg(windows)]
+                {
+                    unsafe {
+                        // 檢測 ESC 鍵
+                        if GetAsyncKeyState(VK_ESCAPE) & (0x8000u16 as i16) != 0 {
+                            std::fs::write("debug_key.txt", "ESC key detected via WinAPI!").ok();
+                            exit_flag_clone.store(true, Ordering::Relaxed);
+                            return;
+                        }
+                        
+                        // 檢測 'Q' 鍵 (VK code 81)
+                        if GetAsyncKeyState(81) & (0x8000u16 as i16) != 0 {
+                            std::fs::write("debug_key.txt", "Q key detected via WinAPI!").ok();
+                            exit_flag_clone.store(true, Ordering::Relaxed);
+                            return;
+                        }
+                        
+                        // 檢測 Ctrl+C (VK_CONTROL + 'C')
+                        if (GetAsyncKeyState(0x11) & (0x8000u16 as i16) != 0) && (GetAsyncKeyState(67) & (0x8000u16 as i16) != 0) {
+                            std::fs::write("debug_key.txt", "Ctrl+C detected via WinAPI!").ok();
+                            exit_flag_clone.store(true, Ordering::Relaxed);
+                            return;
+                        }
+                    }
+                }
+                
+                // 方法2: 嘗試 crossterm (作為備選)
+                if let Ok(true) = event::poll(Duration::from_millis(0)) {
+                    if let Ok(Event::Key(key_event)) = event::read() {
+                        match key_event.code {
+                            KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                                std::fs::write("debug_key.txt", "Ctrl+C detected via crossterm!").ok();
+                                exit_flag_clone.store(true, Ordering::Relaxed);
+                                return;
+                            },
+                            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
+                                std::fs::write("debug_key.txt", format!("Exit key detected via crossterm: {:?}", key_event)).ok();
+                                exit_flag_clone.store(true, Ordering::Relaxed);
+                                return;
+                            },
+                            _ => {
+                                std::fs::write("debug_key.txt", format!("Other key via crossterm: {:?}", key_event)).ok();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
         Self {
             selected_ability: None,
+            exit_requested: exit_flag,
+            input_thread: Some(input_thread),
         }
     }
     
@@ -59,37 +130,44 @@ impl InputHandler {
         terminal_width: u16,
         terminal_height: u16,
     ) -> io::Result<UserInput> {
-        // 檢查用戶輸入（非阻塞）
-        if event::poll(std::time::Duration::from_millis(100))? {
+        // 首先檢查退出標誌
+        if self.exit_requested.load(Ordering::Relaxed) {
+            return Ok(UserInput::Quit);
+        }
+        
+        // 然後檢查其他輸入事件
+        if event::poll(Duration::from_millis(0))? {
             match event::read()? {
                 Event::Key(key_event) => {
-                    self.handle_key_event(key_event, game_state)
+                    return self.handle_key_event(key_event, game_state);
                 },
                 Event::Mouse(mouse_event) => {
-                    self.handle_mouse_event(
+                    return self.handle_mouse_event(
                         mouse_event,
                         game_state,
                         viewport,
                         terminal_width,
                         terminal_height
-                    )
+                    );
                 },
-                _ => Ok(UserInput::Continue)
+                _ => {} // 忽略其他事件
             }
-        } else {
-            Ok(UserInput::Continue)
         }
+        
+        Ok(UserInput::Continue)
     }
     
     /// 處理鍵盤事件
     fn handle_key_event(&mut self, key_event: KeyEvent, game_state: &GameState) -> io::Result<UserInput> {
         match key_event.code {
-            KeyCode::Char('q') | KeyCode::Esc => {
+            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                 if self.selected_ability.is_some() {
                     // 取消技能選擇
                     self.selected_ability = None;
                     Ok(UserInput::Cancel)
                 } else {
+                    // 設置退出標誌
+                    self.exit_requested.store(true, Ordering::Relaxed);
                     Ok(UserInput::Quit)
                 }
             },

@@ -29,6 +29,10 @@ impl MapRenderer {
             cursor::Hide,
             event::EnableMouseCapture
         )?;
+        // 確保輸入緩衝區被清空
+        while event::poll(std::time::Duration::from_millis(0))? {
+            let _ = event::read()?;
+        }
         Ok(())
     }
     
