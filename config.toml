@@ -1,0 +1,37 @@
+# omobaf 配置檔案
+
+[server]
+# MQTT 服務器配置
+mqtt_host = "127.0.0.1"
+mqtt_port = 1883
+
+[backend]
+# 後端執行檔路徑
+executable_path = "../omobab/target/debug/omobab.exe"
+# 或使用 release 版本
+# executable_path = "../omobab/target/release/omobab.exe"
+
+# 後端啟動參數
+args = []
+
+# 工作目錄 (可選，預設為後端執行檔所在目錄)
+working_directory = "../omobab"
+
+# 環境變數設定 (可選)
+[backend.env]
+RUST_LOG = "info"
+# RUST_BACKTRACE = "1"
+
+[frontend]
+# 前端設定
+player_name = "TestPlayer"
+hero_type = "saika_magoichi"
+
+# 自動啟動後端
+auto_start_backend = true
+
+# 後端啟動延遲 (毫秒)
+backend_start_delay = 1000
+
+# 後端關閉等待時間 (毫秒)
+backend_shutdown_timeout = 5000
