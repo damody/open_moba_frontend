@@ -161,11 +161,26 @@ impl GameClient {
         
         info!("進入遊戲 - 玩家: {}, 英雄: {}", self.config.player_name, self.config.hero_type);
         
-        // 發送進入遊戲訊息
+        // 計算視野範圍（每個字符代表10x10單位，終端大小決定總視野）
+        const WORLD_UNITS_PER_CHAR: f32 = 10.0;
+        let (term_width, term_height) = crossterm::terminal::size().unwrap_or((80, 24));
+        let view_width = term_width as f32 * WORLD_UNITS_PER_CHAR;
+        let view_height = term_height as f32 * WORLD_UNITS_PER_CHAR;
+        
+        // 發送進入遊戲訊息，包含視野範圍
         self.send_player_action("enter_game", serde_json::json!({
             "player_name": self.config.player_name,
-            "hero_type": self.config.hero_type
+            "hero_type": self.config.hero_type,
+            "viewport": {
+                "width": view_width,
+                "height": view_height,
+                "units_per_char": WORLD_UNITS_PER_CHAR
+            }
         })).await?;
+        
+        // 更新本地視野設定
+        self.game_state.viewport.width = view_width;
+        self.game_state.viewport.height = view_height;
         
         self.state = ClientState::InGame;
         info!("已進入遊戲");
@@ -196,15 +211,9 @@ impl GameClient {
         // 更新本地遊戲狀態
         self.game_state.apply_local_action(action, &result);
         
-        // 如果是移動操作，更新視窗並發送視窗範圍
+        // 如果是移動操作，發送視野範圍更新
         if action == "move" {
-            if let Some(x) = params.get("x").and_then(|v| v.as_f64()) {
-                if let Some(y) = params.get("y").and_then(|v| v.as_f64()) {
-                    let new_pos = vek::Vec2::new(x as f32, y as f32);
-                    self.game_state.viewport.follow_player(new_pos);
-                    self.send_viewport_update().await?;
-                }
-            }
+            self.send_viewport_update().await?;
         }
         
         Ok(())
@@ -212,19 +221,34 @@ impl GameClient {
     
     /// 發送視窗範圍更新
     pub async fn send_viewport_update(&self) -> Result<()> {
-        let (min, max) = self.game_state.viewport.get_bounds();
+        // 使用玩家當前位置作為視野中心
+        let player_pos = self.game_state.local_player.position;
+        
+        // 計算視野邊界（考慮每個字符代表10x10單位）
+        const WORLD_UNITS_PER_CHAR: f32 = 10.0;
+        let (term_width, term_height) = crossterm::terminal::size().unwrap_or((80, 24));
+        let view_width = term_width as f32 * WORLD_UNITS_PER_CHAR;
+        let view_height = term_height as f32 * WORLD_UNITS_PER_CHAR;
+        
+        let min_x = player_pos.x - view_width / 2.0;
+        let min_y = player_pos.y - view_height / 2.0;
+        let max_x = player_pos.x + view_width / 2.0;
+        let max_y = player_pos.y + view_height / 2.0;
         
         let viewport_data = serde_json::json!({
-            "center_x": self.game_state.viewport.center.x,
-            "center_y": self.game_state.viewport.center.y,
-            "width": self.game_state.viewport.width,
-            "height": self.game_state.viewport.height,
-            "zoom": self.game_state.viewport.zoom,
-            "min_x": min.x,
-            "min_y": min.y,
-            "max_x": max.x,
-            "max_y": max.y,
+            "center_x": player_pos.x,
+            "center_y": player_pos.y,
+            "width": view_width,
+            "height": view_height,
+            "units_per_char": WORLD_UNITS_PER_CHAR,
+            "min_x": min_x,
+            "min_y": min_y,
+            "max_x": max_x,
+            "max_y": max_y,
         });
+        
+        debug!("發送視野更新: 中心({:.1}, {:.1}), 範圍({:.1}x{:.1})", 
+               player_pos.x, player_pos.y, view_width, view_height);
         
         self.send_player_action("update_viewport", viewport_data).await?;
         debug!("已發送視窗範圍更新");

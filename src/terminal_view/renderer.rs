@@ -1,14 +1,13 @@
-/// 地圖渲染模塊
-use std::io::{self, Write};
+use super::{MapDisplay, ViewportManager};
+use crate::game_state::{EntityType, GameState};
 use crossterm::{
-    cursor, execute, queue,
+    cursor, event, execute, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
     terminal::{self, Clear, ClearType},
-    event,
 };
+/// 地圖渲染模塊
+use std::io::{self, Write};
 use vek::Vec2;
-use crate::game_state::{GameState, EntityType};
-use super::{MapDisplay, ViewportManager};
 
 /// 地圖渲染器
 pub struct MapRenderer;
@@ -18,7 +17,7 @@ impl MapRenderer {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// 初始化終端
     pub fn init_terminal(&self) -> io::Result<()> {
         terminal::enable_raw_mode()?;
@@ -35,7 +34,7 @@ impl MapRenderer {
         }
         Ok(())
     }
-    
+
     /// 清理終端
     pub fn cleanup_terminal(&self) -> io::Result<()> {
         execute!(
@@ -47,7 +46,7 @@ impl MapRenderer {
         terminal::disable_raw_mode()?;
         Ok(())
     }
-    
+
     /// 渲染終端視圖
     pub fn render(
         &self,
@@ -58,38 +57,58 @@ impl MapRenderer {
         terminal_height: u16,
     ) -> io::Result<()> {
         let mut stdout = io::stdout();
-        
+
         // 只在初次渲染時清除螢幕，之後使用 cursor 移動
         queue!(stdout, cursor::MoveTo(0, 0))?;
-        
+
         // 檢查是否有有效的遊戲資料
         if !game_state.has_valid_data() {
             // 沒有資料時顯示等待畫面
-            self.render_waiting_screen(&mut stdout, game_state, viewport, show_vision, terminal_width, terminal_height)?;
+            self.render_waiting_screen(
+                &mut stdout,
+                game_state,
+                viewport,
+                show_vision,
+                terminal_width,
+                terminal_height,
+            )?;
         } else {
             // 有資料時正常渲染
+            log::info!("有資料時正常渲染...");
             // 創建地圖網格
-            let mut map_grid = self.create_map_grid(game_state, viewport, terminal_width, terminal_height);
-            
+            let mut map_grid =
+                self.create_map_grid(game_state, viewport, terminal_width, terminal_height);
+
             // 渲染玩家和實體
-            self.render_entities(game_state, &mut map_grid, viewport, terminal_width, terminal_height);
-            
+            self.render_entities(
+                game_state,
+                &mut map_grid,
+                viewport,
+                terminal_width,
+                terminal_height,
+            );
+
             // 渲染視野範圍（如果啟用）
             if show_vision {
-                self.render_vision_range(&mut map_grid, game_state, terminal_width, terminal_height);
+                self.render_vision_range(
+                    &mut map_grid,
+                    game_state,
+                    terminal_width,
+                    terminal_height,
+                );
             }
-            
+
             // 輸出地圖到終端
             self.print_map(&mut stdout, &map_grid)?;
-            
+
             // 顯示底部日誌
             self.print_logs(&mut stdout, terminal_width, terminal_height)?;
         }
-        
+
         stdout.flush()?;
         Ok(())
     }
-    
+
     /// 渲染等待畫面
     fn render_waiting_screen(
         &self,
@@ -102,74 +121,73 @@ impl MapRenderer {
     ) -> io::Result<()> {
         let width = terminal_width as usize;
         let height = terminal_height as usize;
-        
-        // 創建空白地圖網格（只有地形）
+
+        // 創建空白地圖網格
         let mut map_grid = vec![vec![MapDisplay::EMPTY; width]; height];
-        self.generate_terrain(&mut map_grid, game_state, viewport);
-        
-        // 如果啟用 show-vision，也顯示視野邊界
-        if show_vision {
-            self.draw_vision_border(&mut map_grid, width, height);
-        }
-        
         // 在地圖中心顯示等待訊息
         self.render_waiting_message(&mut map_grid, width, height);
-        
+
         // 輸出地圖到終端
         self.print_map(stdout, &map_grid)?;
-        
+
         // 顯示底部日誌
         self.print_logs(stdout, terminal_width, terminal_height)?;
-        
+
         Ok(())
     }
-    
+
     /// 在地圖中心渲染等待訊息
     fn render_waiting_message(&self, grid: &mut Vec<Vec<MapDisplay>>, width: usize, height: usize) {
         let messages = vec![
-            "Waiting for game data...",
+            "在地圖中心渲染等待訊息...",
             "Please ensure connected to game server",
             "and entered game mode",
         ];
-        
+
         let center_y = height / 2;
         let start_y = center_y.saturating_sub(messages.len() / 2);
-        
+
         for (i, message) in messages.iter().enumerate() {
             let y = start_y + i;
             if y < height {
                 let msg_len = message.len();
                 let center_x = width / 2;
                 let start_x = center_x.saturating_sub(msg_len / 2);
-                
+
                 // 清除該行的背景
                 for x in 0..width {
                     if grid[y][x].symbol == MapDisplay::EMPTY.symbol {
-                        grid[y][x] = MapDisplay { symbol: ' ', color: Color::DarkGrey };
+                        grid[y][x] = MapDisplay {
+                            symbol: ' ',
+                            color: Color::DarkGrey,
+                        };
                     }
                 }
-                
+
                 // 渲染訊息文字
                 for (j, ch) in message.chars().enumerate() {
                     let x = start_x + j;
                     if x < width {
-                        grid[y][x] = MapDisplay { 
-                            symbol: ch, 
-                            color: if i == 0 { Color::Yellow } else { Color::White }
+                        grid[y][x] = MapDisplay {
+                            symbol: ch,
+                            color: if i == 0 { Color::Yellow } else { Color::White },
                         };
                     }
                 }
             }
         }
-        
+
         // 添加一個等待動畫點
         let center_x = width / 2;
         let animation_y = center_y + 2;
         if animation_y < height {
-            grid[animation_y][center_x] = MapDisplay { symbol: '●', color: Color::Green };
+            grid[animation_y][center_x] = MapDisplay {
+                symbol: '●',
+                color: Color::Green,
+            };
         }
     }
-    
+
     /// 創建基礎地圖網格
     fn create_map_grid(
         &self,
@@ -180,60 +198,12 @@ impl MapRenderer {
     ) -> Vec<Vec<MapDisplay>> {
         let width = terminal_width as usize;
         let height = terminal_height as usize;
-        
+
         // 初始化為空地
         let mut grid = vec![vec![MapDisplay::EMPTY; width]; height];
-        
-        // 生成地形
-        self.generate_terrain(&mut grid, game_state, viewport);
-        
+
         grid
     }
-    
-    /// 生成地形
-    fn generate_terrain(&self, grid: &mut Vec<Vec<MapDisplay>>, game_state: &GameState, viewport: &ViewportManager) {
-        let term_width = grid[0].len();
-        let term_height = grid.len();
-        
-        // 獲取玩家位置作為地圖中心
-        let player_pos = game_state.local_player.position;
-        
-        // 計算世界座標範圍
-        let world_left = player_pos.x - viewport.view_width / 2.0;
-        let world_top = player_pos.y - viewport.view_height / 2.0;
-        
-        // 計算每個字符對應的世界單位
-        let world_per_char_x = viewport.view_width / term_width as f32;
-        let world_per_char_y = viewport.view_height / term_height as f32;
-        
-        // 生成地形
-        for y in 0..term_height {
-            for x in 0..term_width {
-                // 計算對應的世界座標
-                let world_x = world_left + x as f32 * world_per_char_x;
-                let world_y = world_top + y as f32 * world_per_char_y;
-                
-                // 簡單的地形生成算法
-                let noise = self.simple_noise(world_x, world_y);
-                
-                grid[y][x] = match noise {
-                    n if n > 0.7 => MapDisplay::TREE,
-                    n if n > 0.5 => MapDisplay::WALL,
-                    n if n < -0.6 => MapDisplay::WATER,
-                    n if n < -0.8 => MapDisplay::MOUNTAIN,
-                    _ => MapDisplay::EMPTY,
-                };
-            }
-        }
-    }
-    
-    /// 簡單噪聲函數（用於地形生成）
-    fn simple_noise(&self, x: f32, y: f32) -> f32 {
-        let x = x * 0.1;
-        let y = y * 0.1;
-        ((x.sin() * 12.9898 + y.sin() * 78.233) * 43758.5453).fract() * 2.0 - 1.0
-    }
-    
     /// 渲染實體
     fn render_entities(
         &self,
@@ -246,30 +216,37 @@ impl MapRenderer {
         let term_width = terminal_width as usize;
         let term_height = terminal_height as usize;
         let player_pos = game_state.local_player.position;
-        
+
         // 渲染自己的玩家
-        if let Some((x, y)) = viewport.world_to_screen(player_pos, player_pos, term_width, term_height) {
+        if let Some((x, y)) =
+            viewport.world_to_screen(player_pos, player_pos, term_width, term_height)
+        {
             grid[y][x] = MapDisplay::PLAYER_SELF;
         }
-        
+
         // 渲染其他玩家
         for (_name, player_state) in &game_state.other_players {
             let pos = Vec2::new(player_state.position.0, player_state.position.1);
-            if let Some((x, y)) = viewport.world_to_screen(pos, player_pos, term_width, term_height) {
+            if let Some((x, y)) = viewport.world_to_screen(pos, player_pos, term_width, term_height)
+            {
                 grid[y][x] = MapDisplay::PLAYER_ENEMY;
             }
         }
-        
+
         // 渲染己方召喚物
         for summon in &game_state.local_player.summons {
-            if let Some((x, y)) = viewport.world_to_screen(summon.position, player_pos, term_width, term_height) {
+            if let Some((x, y)) =
+                viewport.world_to_screen(summon.position, player_pos, term_width, term_height)
+            {
                 grid[y][x] = MapDisplay::SUMMON_ALLY;
             }
         }
-        
+
         // 渲染其他實體
         for entity in game_state.entities.values() {
-            if let Some((x, y)) = viewport.world_to_screen(entity.position, player_pos, term_width, term_height) {
+            if let Some((x, y)) =
+                viewport.world_to_screen(entity.position, player_pos, term_width, term_height)
+            {
                 let display = match entity.entity_type {
                     EntityType::Player(_) => MapDisplay::PLAYER_ENEMY,
                     EntityType::Summon(_) => {
@@ -278,7 +255,7 @@ impl MapRenderer {
                         } else {
                             MapDisplay::SUMMON_ENEMY
                         }
-                    },
+                    }
                     EntityType::Projectile => MapDisplay::PROJECTILE,
                     EntityType::Effect => MapDisplay::EFFECT,
                 };
@@ -286,74 +263,114 @@ impl MapRenderer {
             }
         }
     }
-    
+
     /// 渲染視野範圍和額外信息
-    fn render_vision_range(&self, grid: &mut Vec<Vec<MapDisplay>>, _game_state: &GameState, terminal_width: u16, terminal_height: u16) {
+    fn render_vision_range(
+        &self,
+        grid: &mut Vec<Vec<MapDisplay>>,
+        _game_state: &GameState,
+        terminal_width: u16,
+        terminal_height: u16,
+    ) {
         let term_width = terminal_width as usize;
         let term_height = terminal_height as usize;
-        
+
         // 繪製視圖邊界框
         self.draw_vision_border(grid, term_width, term_height);
-        
+
         // 顯示距離信息（如果有空間）
         if term_width > 20 && term_height > 10 {
             self.add_distance_markers(grid, term_width, term_height);
         }
-        
-        // 標記視野中心
-        self.mark_vision_center(grid, term_width, term_height);
     }
-    
+
     /// 繪製視野邊界框
-    fn draw_vision_border(&self, grid: &mut Vec<Vec<MapDisplay>>, term_width: usize, term_height: usize) {
+    fn draw_vision_border(
+        &self,
+        grid: &mut Vec<Vec<MapDisplay>>,
+        term_width: usize,
+        term_height: usize,
+    ) {
         for x in 0..term_width {
             // 上邊界
             if grid[0][x].symbol == MapDisplay::EMPTY.symbol {
                 grid[0][x] = if x == 0 {
-                    MapDisplay { symbol: '┌', color: Color::Yellow }
+                    MapDisplay {
+                        symbol: '┌',
+                        color: Color::Yellow,
+                    }
                 } else if x == term_width - 1 {
-                    MapDisplay { symbol: '┐', color: Color::Yellow }
+                    MapDisplay {
+                        symbol: '┐',
+                        color: Color::Yellow,
+                    }
                 } else {
-                    MapDisplay { symbol: '─', color: Color::Yellow }
+                    MapDisplay {
+                        symbol: '─',
+                        color: Color::Yellow,
+                    }
                 };
             }
             // 下邊界
             if grid[term_height - 1][x].symbol == MapDisplay::EMPTY.symbol {
                 grid[term_height - 1][x] = if x == 0 {
-                    MapDisplay { symbol: '└', color: Color::Yellow }
+                    MapDisplay {
+                        symbol: '└',
+                        color: Color::Yellow,
+                    }
                 } else if x == term_width - 1 {
-                    MapDisplay { symbol: '┘', color: Color::Yellow }
+                    MapDisplay {
+                        symbol: '┘',
+                        color: Color::Yellow,
+                    }
                 } else {
-                    MapDisplay { symbol: '─', color: Color::Yellow }
+                    MapDisplay {
+                        symbol: '─',
+                        color: Color::Yellow,
+                    }
                 };
             }
         }
-        
+
         for y in 1..term_height - 1 {
             // 左邊界
             if grid[y][0].symbol == MapDisplay::EMPTY.symbol {
-                grid[y][0] = MapDisplay { symbol: '│', color: Color::Yellow };
+                grid[y][0] = MapDisplay {
+                    symbol: '│',
+                    color: Color::Yellow,
+                };
             }
             // 右邊界
             if grid[y][term_width - 1].symbol == MapDisplay::EMPTY.symbol {
-                grid[y][term_width - 1] = MapDisplay { symbol: '│', color: Color::Yellow };
+                grid[y][term_width - 1] = MapDisplay {
+                    symbol: '│',
+                    color: Color::Yellow,
+                };
             }
         }
     }
-    
+
     /// 添加距離標記
-    fn add_distance_markers(&self, grid: &mut Vec<Vec<MapDisplay>>, term_width: usize, term_height: usize) {
+    fn add_distance_markers(
+        &self,
+        grid: &mut Vec<Vec<MapDisplay>>,
+        term_width: usize,
+        term_height: usize,
+    ) {
         let center_x = term_width / 2;
         let center_y = term_height / 2;
-        
+
         // 在 1/4 和 3/4 位置添加距離環
         let quarter_x = term_width / 4;
         let three_quarter_x = term_width * 3 / 4;
         let quarter_y = term_height / 4;
         let three_quarter_y = term_height * 3 / 4;
-        
-        let distance_marker = MapDisplay { symbol: '+', color: Color::DarkYellow };
-        
+
+        let distance_marker = MapDisplay {
+            symbol: '+',
+            color: Color::DarkYellow,
+        };
+
         // 在適當的位置添加距離標記
         if grid[quarter_y][center_x].symbol == MapDisplay::EMPTY.symbol {
             grid[quarter_y][center_x] = distance_marker;
@@ -368,19 +385,29 @@ impl MapRenderer {
             grid[center_y][three_quarter_x] = distance_marker;
         }
     }
-    
+
     /// 標記視野中心
-    fn mark_vision_center(&self, grid: &mut Vec<Vec<MapDisplay>>, term_width: usize, term_height: usize) {
+    fn mark_vision_center(
+        &self,
+        grid: &mut Vec<Vec<MapDisplay>>,
+        term_width: usize,
+        term_height: usize,
+    ) {
         let center_x = term_width / 2;
         let center_y = term_height / 2;
-        
+
         // 如果中心位置是空的，添加一個中心標記
-        if center_x < term_width && center_y < term_height && 
-           grid[center_y][center_x].symbol == MapDisplay::EMPTY.symbol {
-            grid[center_y][center_x] = MapDisplay { symbol: '·', color: Color::White };
+        if center_x < term_width
+            && center_y < term_height
+            && grid[center_y][center_x].symbol == MapDisplay::EMPTY.symbol
+        {
+            grid[center_y][center_x] = MapDisplay {
+                symbol: '·',
+                color: Color::White,
+            };
         }
     }
-    
+
     /// 打印地圖到終端
     fn print_map(&self, stdout: &mut io::Stdout, grid: &Vec<Vec<MapDisplay>>) -> io::Result<()> {
         for (row_idx, row) in grid.iter().enumerate() {
@@ -398,15 +425,20 @@ impl MapRenderer {
         queue!(stdout, ResetColor)?;
         Ok(())
     }
-    
+
     /// 打印底部日誌
-    fn print_logs(&self, stdout: &mut io::Stdout, terminal_width: u16, terminal_height: u16) -> io::Result<()> {
+    fn print_logs(
+        &self,
+        stdout: &mut io::Stdout,
+        terminal_width: u16,
+        terminal_height: u16,
+    ) -> io::Result<()> {
         let terminal_height = terminal_height + 3; // 恢復完整終端高度
         crate::terminal_logger::TerminalLogger::global().render_logs(
-            stdout, 
-            terminal_width, 
-            terminal_height, 
-            3  // 使用底部3行顯示日誌
+            stdout,
+            terminal_width,
+            terminal_height,
+            3, // 使用底部3行顯示日誌
         )?;
         Ok(())
     }
