@@ -496,8 +496,8 @@ impl GameState {
     /// 檢查是否有有效的遊戲資料
     /// 判斷標準：玩家位置不為零點，或有其他玩家/實體資料
     pub fn has_valid_data(&self) -> bool {
-        // 如果玩家位置不在原點，表示已經有位置資料
-        if self.local_player.position != Vec2::zero() {
+        // 如果玩家名稱不為空，表示已經有位置資料
+        if self.local_player.name != "" {
             return true;
         }
         

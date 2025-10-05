@@ -1,5 +1,5 @@
 /// 後端程序管理器
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use anyhow::{Result, Context};
@@ -85,10 +85,17 @@ impl BackendManager {
             cmd.env(key, value);
         }
         
+        // 設定輸出重定向到 backend.log
+        let log_file = std::fs::File::create("backend.log")
+            .context("無法創建 backend.log 文件")?;
+        cmd.stdout(log_file.try_clone().context("無法複製 log 文件句柄")?);
+        cmd.stderr(log_file);
+        
         // 啟動程序
         match cmd.spawn() {
             Ok(child) => {
                 info!("✅ 後端程序已啟動 (PID: {:?})", child.id());
+                info!("📝 後端輸出已重定向到 backend.log");
                 *process_guard = Some(child);
                 
                 // 等待後端啟動
