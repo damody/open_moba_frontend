@@ -7,15 +7,15 @@ mqtt_port = 1883
 
 [backend]
 # 後端執行檔路徑
-executable_path = "../omobab/target/debug/omobab.exe"
+executable_path = "../omb/target/debug/omobab"
 # 或使用 release 版本
-# executable_path = "../omobab/target/release/omobab.exe"
+# executable_path = "../omb/target/release/omobab"
 
 # 後端啟動參數
 args = []
 
 # 工作目錄 (可選，預設為後端執行檔所在目錄)
-working_directory = "../omobab"
+working_directory = "../omb"
 
 # 環境變數設定 (可選)
 [backend.env]
@@ -35,3 +35,18 @@ backend_start_delay = 1000
 
 # 後端關閉等待時間 (毫秒)
 backend_shutdown_timeout = 5000
+
+# 螢幕顯示範圍配置
+[frontend.screen_range]
+# 螢幕顯示範圍寬度（遊戲世界單位）
+width = 400.0
+# 螢幕顯示範圍高度（遊戲世界單位）
+height = 300.0
+# 是否啟用動態範圍調整（根據縮放等調整）
+dynamic_range = true
+# 最小顯示範圍（防止過度縮小）
+min_width = 200.0
+min_height = 150.0
+# 最大顯示範圍（防止過度放大）
+max_width = 800.0
+max_height = 600.0

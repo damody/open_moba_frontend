@@ -73,8 +73,6 @@ impl MapRenderer {
                 terminal_height,
             )?;
         } else {
-            // 有資料時正常渲染
-            log::info!("有資料時正常渲染...");
             // 創建地圖網格
             let mut map_grid =
                 self.create_map_grid(game_state, viewport, terminal_width, terminal_height);

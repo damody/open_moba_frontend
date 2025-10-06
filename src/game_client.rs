@@ -369,6 +369,7 @@ impl GameClient {
         if let Some(client) = &self.client {
             let client_for_requests = client.clone();
             let player_name = self.config.player_name.clone();
+            let game_state = self.shared_game_state.clone();
             
             info!("🔄 啟動畫面狀態請求循環 (每3秒一次)");
             
@@ -377,18 +378,33 @@ impl GameClient {
                 loop {
                     interval.tick().await;
                     
-                    // 發送畫面狀態請求 - 以玩家為中心的範圍請求
+                    // 從共享遊戲狀態獲取當前顯示範圍
+                    let display_area = if let Some(shared_state) = &game_state {
+                        let state = shared_state.lock().await;
+                        state.viewport.get_display_area()
+                    } else {
+                        // 預設範圍
+                        (0.0, 0.0, 400.0, 300.0)
+                    };
+                    
+                    let (min_x, min_y, max_x, max_y) = display_area;
+                    
+                    // 發送畫面狀態請求 - 使用當前螢幕顯示範圍
                     let request_message = serde_json::json!({
-                        "name": player_name,  // 添加 name 欄位
+                        "name": player_name,
                         "t": "screen_request",
-                        "a": "get_screen_area", 
+                        "a": "get_area",  // 使用 get_area 而不是 get_screen_area
                         "d": {
                             "player_name": player_name,
-                            "request_type": "player_centered",
-                            "center_x": 0.0,  // 將由後端根據玩家位置計算
-                            "center_y": 0.0,
-                            "width": 120.0,   // ±60 範圍
-                            "height": 80.0,   // ±40 範圍
+                            "request_type": "screen_display_range",
+                            "min_x": min_x,
+                            "min_y": min_y,
+                            "max_x": max_x,
+                            "max_y": max_y,
+                            "width": max_x - min_x,
+                            "height": max_y - min_y,
+                            "center_x": (min_x + max_x) / 2.0,
+                            "center_y": (min_y + max_y) / 2.0,
                             "timestamp": std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap()
@@ -405,7 +421,8 @@ impl GameClient {
                     ).await {
                         warn!("發送畫面狀態請求失敗: {}", e);
                     } else {
-                        info!("🔄 已發送畫面狀態請求到主題: {}", topic);
+                        info!("🔄 已發送 get_area 請求 - 範圍: ({:.1},{:.1}) 到 ({:.1},{:.1}) 到主題: {}", 
+                              min_x, min_y, max_x, max_y, topic);
                     }
                 }
             });

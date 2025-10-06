@@ -31,12 +31,27 @@ pub struct GameState {
 pub struct Viewport {
     /// 螢幕中心位置（通常跟隨玩家）
     pub center: Vec2<f32>,
-    /// 螢幕寬度
+    /// 螢幕寬度（像素）
     pub width: f32,
-    /// 螢幕高度
+    /// 螢幕高度（像素）
     pub height: f32,
     /// 縮放比例
     pub zoom: f32,
+    /// 當前顯示範圍（用於 get_area 請求，遊戲世界單位）
+    pub display_range: DisplayRange,
+}
+
+/// 顯示範圍（遊戲世界單位）
+#[derive(Debug, Clone)]
+pub struct DisplayRange {
+    /// 當前顯示寬度（遊戲世界單位）
+    pub width: f32,
+    /// 當前顯示高度（遊戲世界單位）
+    pub height: f32,
+    /// 是否啟用動態範圍調整
+    pub dynamic_range: bool,
+    /// 範圍修正值（由縮放等影響）
+    pub range_modifier: f32,
 }
 
 /// 本地玩家狀態
@@ -123,10 +138,44 @@ impl Viewport {
             width: 1920.0,
             height: 1080.0,
             zoom: 1.0,
+            display_range: DisplayRange {
+                width: 400.0,  // 預設顯示範圍寬度（遊戲世界單位）
+                height: 300.0, // 預設顯示範圍高度（遊戲世界單位）
+                dynamic_range: true,
+                range_modifier: 1.0,
+            },
         }
     }
     
-    /// 獲取視窗邊界
+    /// 根據螢幕解析度創建視窗
+    pub fn for_screen(screen_width: u32, screen_height: u32) -> Self {
+        // 根據螢幕解析度計算顯示範圍
+        let aspect_ratio = screen_width as f32 / screen_height as f32;
+        let base_width = 400.0;
+        let base_height = 300.0;
+        
+        // 保持寬高比，但根據螢幕大小調整
+        let scale_factor = if aspect_ratio > 1.33 {  // 寬螢幕
+            (screen_width as f32 / 1920.0).min(1.5)  // 限制最大縮放
+        } else {
+            (screen_height as f32 / 1080.0).min(1.5)
+        };
+        
+        Self {
+            center: Vec2::zero(),
+            width: screen_width as f32,
+            height: screen_height as f32,
+            zoom: 1.0,
+            display_range: DisplayRange {
+                width: (base_width * scale_factor).clamp(200.0, 800.0),
+                height: (base_height * scale_factor).clamp(150.0, 600.0),
+                dynamic_range: true,
+                range_modifier: 1.0,
+            },
+        }
+    }
+    
+    /// 獲取視窗邊界（像素座標）
     pub fn get_bounds(&self) -> (Vec2<f32>, Vec2<f32>) {
         let half_width = self.width / (2.0 * self.zoom);
         let half_height = self.height / (2.0 * self.zoom);
@@ -141,6 +190,29 @@ impl Viewport {
         );
         
         (min, max)
+    }
+    
+    /// 獲取顯示範圍邊界（遊戲世界座標，用於 get_area 請求）
+    pub fn get_display_bounds(&self) -> (Vec2<f32>, Vec2<f32>) {
+        let half_width = self.display_range.width / 2.0;
+        let half_height = self.display_range.height / 2.0;
+        
+        let min = Vec2::new(
+            self.center.x - half_width,
+            self.center.y - half_height,
+        );
+        let max = Vec2::new(
+            self.center.x + half_width,
+            self.center.y + half_height,
+        );
+        
+        (min, max)
+    }
+    
+    /// 獲取顯示範圍的矩形區域（用於 MQTT 請求）
+    pub fn get_display_area(&self) -> (f32, f32, f32, f32) {
+        let (min, max) = self.get_display_bounds();
+        (min.x, min.y, max.x, max.y)
     }
     
     /// 更新視窗中心（跟隨玩家）
@@ -183,7 +255,7 @@ impl GameState {
             entities: HashMap::new(),
             last_update: SystemTime::now(),
             sync_errors: 0,
-            viewport: Viewport::default(),
+            viewport: Viewport::for_screen(1920, 1080), // 預設 1920x1080 解析度
         }
     }
     

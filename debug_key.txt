@@ -1,1 +1,1 @@
-Ctrl+C detected via WinAPI!
+Other key via crossterm: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }

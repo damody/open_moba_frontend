@@ -7,10 +7,12 @@ pub mod input;
 pub mod renderer;
 pub mod viewport;
 
-use std::io;
+use std::io::{self, Write};
 use crossterm::terminal;
 use vek::Vec2;
 use crate::game_state::GameState;
+use log::debug;
+use crate::terminal_logger::TerminalLogger;
 
 pub use display::MapDisplay;
 pub use input::{UserInput, InputHandler};
@@ -64,12 +66,19 @@ impl TerminalView {
     }
     
     /// 初始化終端
-    pub fn init_terminal(&self) -> io::Result<()> {
-        self.renderer.init_terminal()
+    pub fn init_terminal(&mut self) -> io::Result<()> {
+        self.renderer.init_terminal()?;
+        // Linux: 事件執行緒已在 InputHandler::new() 啟動，這裡不需重啟
+        Ok(())
     }
     
     /// 清理終端
-    pub fn cleanup_terminal(&self) -> io::Result<()> {
+    pub fn cleanup_terminal(&mut self) -> io::Result<()> {
+        // Linux: 停止背景事件讀取執行緒
+        #[cfg(not(windows))]
+        {
+            self.input_handler.stop_event_thread();
+        }
         self.renderer.cleanup_terminal()
     }
     
@@ -94,12 +103,43 @@ impl TerminalView {
         // 渲染當前狀態
         self.render(game_state)?;
         
-        // 處理用戶輸入
-        self.input_handler.handle_input(
-            game_state,
-            &self.viewport,
-            self.terminal_width,
-            self.terminal_height
-        )
+        // 在 view 模式下使用特殊的輸入處理
+        self.handle_view_input(game_state)
     }
+    
+    /// 處理 view 模式的輸入（Linux: 背景執行緒 + 通道；Windows: poll + read）
+    fn handle_view_input(&mut self, game_state: &GameState) -> io::Result<UserInput> {
+        // 首先檢查退出標誌
+        if self.input_handler.is_exit_requested() {
+            TerminalLogger::global().log("DEBUG", "🔍 檢測到退出標誌，返回 Quit".to_string());
+            return Ok(UserInput::Quit);
+        }
+
+        // Linux：非阻塞從背景執行緒接收事件
+        #[cfg(not(windows))]
+        {
+            if let Some(ev) = self.input_handler.try_recv_event() {
+                match ev {
+                    crossterm::event::Event::Key(key_event) => {
+                        let result = self.input_handler.handle_key_event(key_event, game_state);
+                        return result;
+                    }
+                    crossterm::event::Event::Mouse(mouse_event) => {
+                        return self.input_handler.handle_mouse_event(
+                            mouse_event,
+                            game_state,
+                            &self.viewport,
+                            self.terminal_width,
+                            self.terminal_height,
+                        );
+                    }
+                    other_event => {
+                    }
+                }
+            }
+            return Ok(UserInput::Continue);
+        }
+
+    }
+    
 }

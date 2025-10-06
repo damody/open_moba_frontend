@@ -38,6 +38,27 @@ pub struct FrontendConfig {
     pub auto_start_backend: bool,
     pub backend_start_delay: u64,
     pub backend_shutdown_timeout: u64,
+    /// 螢幕顯示範圍配置
+    pub screen_range: ScreenRangeConfig,
+}
+
+/// 螢幕顯示範圍配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenRangeConfig {
+    /// 螢幕顯示範圍寬度（遊戲世界單位）
+    pub width: f32,
+    /// 螢幕顯示範圍高度（遊戲世界單位）
+    pub height: f32,
+    /// 是否啟用動態範圍調整（根據縮放等調整）
+    pub dynamic_range: bool,
+    /// 最小顯示範圍（防止過度縮小）
+    pub min_width: f32,
+    /// 最小顯示範圍（防止過度縮小）
+    pub min_height: f32,
+    /// 最大顯示範圍（防止過度放大）
+    pub max_width: f32,
+    /// 最大顯示範圍（防止過度放大）
+    pub max_height: f32,
 }
 
 impl Default for AppConfig {
@@ -59,6 +80,15 @@ impl Default for AppConfig {
                 auto_start_backend: true,
                 backend_start_delay: 1000,
                 backend_shutdown_timeout: 5000,
+                screen_range: ScreenRangeConfig {
+                    width: 400.0,      // 螢幕顯示範圍寬度（遊戲世界單位）
+                    height: 300.0,     // 螢幕顯示範圍高度（遊戲世界單位）
+                    dynamic_range: true,
+                    min_width: 200.0,  // 最小顯示範圍
+                    min_height: 150.0,
+                    max_width: 800.0,  // 最大顯示範圍
+                    max_height: 600.0,
+                },
             },
         }
     }
@@ -118,5 +148,36 @@ impl AppConfig {
         }
         
         Ok(abs_path)
+    }
+    
+    /// 根據螢幕解析度獲取顯示範圍配置
+    pub fn get_screen_range(&self, screen_width: u32, screen_height: u32) -> ScreenRangeConfig {
+        // 根據螢幕解析度調整顯示範圍
+        let aspect_ratio = screen_width as f32 / screen_height as f32;
+        let base_width = self.frontend.screen_range.width;
+        let base_height = self.frontend.screen_range.height;
+        
+        // 保持寬高比，但根據螢幕大小調整
+        let scale_factor = if aspect_ratio > 1.33 {  // 寬螢幕
+            (screen_width as f32 / 1920.0).min(1.5)  // 限制最大縮放
+        } else {
+            (screen_height as f32 / 1080.0).min(1.5)
+        };
+        
+        ScreenRangeConfig {
+            width: (base_width * scale_factor).clamp(
+                self.frontend.screen_range.min_width,
+                self.frontend.screen_range.max_width
+            ),
+            height: (base_height * scale_factor).clamp(
+                self.frontend.screen_range.min_height,
+                self.frontend.screen_range.max_height
+            ),
+            dynamic_range: self.frontend.screen_range.dynamic_range,
+            min_width: self.frontend.screen_range.min_width,
+            min_height: self.frontend.screen_range.min_height,
+            max_width: self.frontend.screen_range.max_width,
+            max_height: self.frontend.screen_range.max_height,
+        }
     }
 }

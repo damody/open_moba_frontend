@@ -268,11 +268,11 @@ impl CliHandler {
                                 }
                                 
                                 // 更新技能冷卻時間
-                                client.get_game_state_mut().update_cooldowns(0.6); // 600ms = 0.6s
-                                
+                                client.get_game_state_mut().update_cooldowns(0.016); // 600ms = 0.6s
+                                tokio::time::sleep(std::time::Duration::from_millis(16)).await;
                                 match view.render_live(client.get_game_state()) {
                                     Ok(crate::terminal_view::UserInput::Continue) => {
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                                        
                                     }
                                     Ok(crate::terminal_view::UserInput::Quit) => break,
                                     Ok(crate::terminal_view::UserInput::Move(world_pos)) => {
@@ -283,7 +283,6 @@ impl CliHandler {
                                         })).await {
                                             error!("移動指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(crate::terminal_view::UserInput::Attack(world_pos)) => {
                                         info!("攻擊位置: ({:.1}, {:.1})", world_pos.x, world_pos.y);
@@ -293,7 +292,6 @@ impl CliHandler {
                                         })).await {
                                             error!("攻擊指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(crate::terminal_view::UserInput::MoveAttack(world_pos)) => {
                                         info!("移動攻擊到: ({:.1}, {:.1})", world_pos.x, world_pos.y);
@@ -304,7 +302,6 @@ impl CliHandler {
                                         })).await {
                                             error!("移動攻擊移動部分失敗: {}", e);
                                         } else {
-                                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                                             if let Err(e) = client.perform_action("attack", serde_json::json!({
                                                 "target_position": [world_pos.x, world_pos.y],
                                                 "attack_type": "move_attack"
@@ -312,7 +309,6 @@ impl CliHandler {
                                                 error!("移動攻擊攻擊部分失敗: {}", e);
                                             }
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(crate::terminal_view::UserInput::ForceAttack(world_pos)) => {
                                         info!("強制攻擊位置: ({:.1}, {:.1})", world_pos.x, world_pos.y);
@@ -322,7 +318,6 @@ impl CliHandler {
                                         })).await {
                                             error!("強制攻擊指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(crate::terminal_view::UserInput::CastAbility(ability_id, world_pos)) => {
                                         info!("施放技能 {} 於位置: ({:.1}, {:.1})", ability_id, world_pos.x, world_pos.y);
@@ -333,11 +328,9 @@ impl CliHandler {
                                         })).await {
                                             error!("技能施放指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(crate::terminal_view::UserInput::Cancel) => {
                                         // 技能選擇被取消，繼續遊戲循環
-                                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                                     }
                                     Ok(crate::terminal_view::UserInput::UseItem(item_id, _target_pos)) => {
                                         info!("使用道具: {}", item_id);
@@ -346,7 +339,6 @@ impl CliHandler {
                                         })).await {
                                             error!("道具使用指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
                                     }
                                     Err(e) => {
                                         error!("終端視圖錯誤: {}", e);
@@ -621,11 +613,11 @@ impl CliHandler {
                                 }
                                 
                                 // 更新技能冷卻時間
-                                client.get_game_state_mut().update_cooldowns(0.6); // 600ms = 0.6s
-                                
+                                client.get_game_state_mut().update_cooldowns(0.016); // 600ms = 0.6s
+                                tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+
                                 match view.render_live(client.get_game_state()) {
                                     Ok(UserInput::Continue) => {
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(UserInput::Quit) => break, // 用戶按了退出鍵
                                     Ok(UserInput::Move(world_pos)) => {
@@ -636,7 +628,6 @@ impl CliHandler {
                                         })).await {
                                             error!("移動指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(UserInput::Attack(world_pos)) => {
                                         info!("攻擊位置: ({:.1}, {:.1})", world_pos.x, world_pos.y);
@@ -646,7 +637,6 @@ impl CliHandler {
                                         })).await {
                                             error!("攻擊指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(UserInput::MoveAttack(world_pos)) => {
                                         info!("移動攻擊到: ({:.1}, {:.1})", world_pos.x, world_pos.y);
@@ -666,7 +656,6 @@ impl CliHandler {
                                                 error!("移動攻擊攻擊部分失敗: {}", e);
                                             }
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(UserInput::ForceAttack(world_pos)) => {
                                         info!("強制攻擊位置: ({:.1}, {:.1})", world_pos.x, world_pos.y);
@@ -676,7 +665,6 @@ impl CliHandler {
                                         })).await {
                                             error!("強制攻擊指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(UserInput::CastAbility(ability_id, world_pos)) => {
                                         info!("施放技能 {} 於位置: ({:.1}, {:.1})", ability_id, world_pos.x, world_pos.y);
@@ -687,11 +675,9 @@ impl CliHandler {
                                         })).await {
                                             error!("技能施放指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
                                     }
                                     Ok(UserInput::Cancel) => {
                                         // 技能選擇被取消，繼續遊戲循環
-                                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                                     }
                                     Ok(UserInput::UseItem(item_id, _target_pos)) => {
                                         info!("使用道具: {}", item_id);
@@ -700,7 +686,6 @@ impl CliHandler {
                                         })).await {
                                             error!("道具使用指令失敗: {}", e);
                                         }
-                                        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
                                     }
                                     Err(e) => {
                                         error!("終端視圖錯誤: {}", e);
